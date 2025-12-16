@@ -1,0 +1,211 @@
+# Customer Archetypes for Zamir's Bar (The Crossed Keys)
+# These archetypes define the types of customers that visit the bar
+
+factions:
+  - name: qdt
+    description: "QDT Corporation - the dominant corporate power"
+    speech_hints:
+      - "Uses corporate jargon occasionally"
+      - "Refers to 'company interests' and 'operational efficiency'"
+      - "May be guarded about work details"
+
+  - name: rebel
+    description: "The Rebellion - fighting against QDT's control"
+    speech_hints:
+      - "Cautious about revealing affiliations"
+      - "May use coded language or test for sympathies"
+      - "Values freedom and autonomy"
+
+  - name: neutral
+    description: "Unaffiliated with either faction"
+    speech_hints:
+      - "Focuses on personal business or pleasure"
+      - "May complain about both factions equally"
+      - "Pragmatic and self-interested"
+
+emotional_states:
+  - name: calm
+    behavior: "Relaxed, conversational, patient"
+    speech_hints:
+      - "Takes time to respond"
+      - "Engages in small talk"
+      - "Not in a hurry"
+
+  - name: nervous
+    behavior: "Anxious, looking around, speaking quickly"
+    speech_hints:
+      - "Short sentences"
+      - "May change topics suddenly"
+      - "Lowers voice for sensitive topics"
+
+  - name: desperate
+    behavior: "Urgent, willing to pay any price, stressed"
+    speech_hints:
+      - "Pleading tone"
+      - "Offers more than asked"
+      - "Time pressure in speech"
+
+  - name: suspicious
+    behavior: "Guarded, tests before trusting, asks probing questions"
+    speech_hints:
+      - "Answers questions with questions"
+      - "Vague about own purposes"
+      - "Watches reactions carefully"
+
+  - name: drunk
+    behavior: "Loose-lipped, emotional, unpredictable"
+    speech_hints:
+      - "Rambling speech"
+      - "Reveals more than intended"
+      - "Mood swings"
+
+objectives:
+  - name: information
+    description: "Seeking specific intelligence or rumors"
+    typical_topics:
+      - "Shipping schedules"
+      - "Faction movements"
+      - "Specific individuals"
+      - "Station events"
+
+  - name: work
+    description: "Looking for a job or crew opportunity"
+    typical_topics:
+      - "Available positions"
+      - "Who's hiring"
+      - "Dangerous but lucrative jobs"
+
+  - name: refuge
+    description: "Needs a safe place or help hiding"
+    typical_topics:
+      - "Safe houses"
+      - "Who to avoid"
+      - "Escape routes"
+
+  - name: social
+    description: "Just here to drink and talk"
+    typical_topics:
+      - "Local gossip"
+      - "Weather/station conditions"
+      - "Sports or entertainment"
+
+  - name: business
+    description: "Has something to sell or trade"
+    typical_topics:
+      - "Goods for sale"
+      - "Trade negotiations"
+      - "Finding buyers"
+
+trust_levels:
+  - name: stranger
+    description: "First time at the bar"
+    behavior:
+      - "Zamir is polite but guarded"
+      - "No credit or favors"
+      - "Must prove themselves"
+
+  - name: acquaintance
+    description: "Has been here a few times"
+    behavior:
+      - "Zamir remembers their drink"
+      - "Basic courtesy extended"
+      - "Still business-first relationship"
+
+  - name: regular
+    description: "Frequent visitor, known quantity"
+    behavior:
+      - "Zamir shares more freely"
+      - "May extend small favors"
+      - "Trusted not to cause trouble"
+
+archetypes:
+  # QDT-affiliated
+  - name: corporate_suit
+    faction: qdt
+    description: "Mid-level QDT manager seeking leverage on rivals"
+    personality_hints:
+      - "Confident, slightly condescending"
+      - "Drops hints about connections"
+      - "Calculating"
+
+  - name: security_officer
+    faction: qdt
+    description: "QDT security hunting for rebel activity"
+    personality_hints:
+      - "Professional, observant"
+      - "Asks pointed questions"
+      - "Careful about what they reveal"
+
+  - name: dock_supervisor
+    faction: qdt
+    description: "Blue-collar QDT worker, knows shipping gossip"
+    personality_hints:
+      - "Friendly, talkative after drinks"
+      - "Complains about management"
+      - "Good source of shipping info"
+
+  # Rebel-affiliated
+  - name: courier
+    faction: rebel
+    description: "Rebel courier needing safe passage information"
+    personality_hints:
+      - "Cautious, speaks in hints"
+      - "Tests trustworthiness"
+      - "Always has exit plan in mind"
+
+  - name: recruiter
+    faction: rebel
+    description: "Rebel carefully vetting potential sympathizers"
+    personality_hints:
+      - "Asks about opinions on QDT"
+      - "Shares anti-corporate stories"
+      - "Never directly admits affiliation"
+
+  - name: veteran_fighter
+    faction: rebel
+    description: "War-weary rebel seeking respite"
+    personality_hints:
+      - "Tired, philosophical"
+      - "Drinks to forget"
+      - "May share war stories if trusted"
+
+  # Neutral
+  - name: merchant_captain
+    faction: neutral
+    description: "Independent trader with route information"
+    personality_hints:
+      - "Business-minded"
+      - "Trades information for information"
+      - "Knows shipping lanes well"
+
+  - name: station_worker
+    faction: neutral
+    description: "Maintenance or dock worker, knows station layout"
+    personality_hints:
+      - "Salt of the earth type"
+      - "Gossips about what they've seen"
+      - "Just wants a quiet drink"
+
+  - name: bounty_hunter
+    faction: neutral
+    description: "Hunter seeking targets, will pay for leads"
+    personality_hints:
+      - "Direct, transactional"
+      - "Studies everyone in the bar"
+      - "Has credits to spend"
+
+  - name: refugee
+    faction: neutral
+    description: "Displaced person seeking safety, may have valuable info"
+    personality_hints:
+      - "Scared but determined"
+      - "Has seen things"
+      - "Needs help desperately"
+
+  - name: entertainer
+    faction: neutral
+    description: "Traveling performer with news from other places"
+    personality_hints:
+      - "Charismatic, talkative"
+      - "Loves to share stories"
+      - "Knows people everywhere"
