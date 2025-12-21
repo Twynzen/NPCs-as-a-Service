@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NPC Playground</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-tertiary: #0f3460;
+            --text-primary: #eee;
+            --text-secondary: #aaa;
+            --accent: #e94560;
+            --accent-hover: #ff6b6b;
+            --success: #4ecca3;
+            --border: #333;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: var(--bg-secondary);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            color: var(--accent);
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+
+        .status-dot.offline {
+            background: var(--accent);
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            max-height: calc(100vh - 60px);
+        }
+
+        .sidebar {
+            width: 280px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            padding: 1rem;
+            overflow-y: auto;
+        }
+
+        .sidebar h2 {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .character-list {
+            list-style: none;
+        }
+
+        .character-item {
+            padding: 0.75rem;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 0.5rem;
+            transition: background 0.2s;
+        }
+
+        .character-item:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .character-item.selected {
+            background: var(--bg-tertiary);
+            border-left: 3px solid var(--accent);
+        }
+
+        .character-item h3 {
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .character-item p {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-header {
+            padding: 1rem 1.5rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .chat-header h2 {
+            font-size: 1.2rem;
+        }
+
+        .chat-header p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .messages {
+            flex: 1;
+            padding: 1.5rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 1rem;
+            border-radius: 12px;
+            line-height: 1.5;
+        }
+
+        .message.user {
+            background: var(--bg-tertiary);
+            align-self: flex-end;
+        }
+
+        .message.npc {
+            background: var(--bg-secondary);
+            align-self: flex-start;
+            border: 1px solid var(--border);
+        }
+
+        .message .speaker {
+            font-size: 0.75rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+        }
+
+        .message .actions {
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border);
+            font-size: 0.8rem;
+            color: var(--success);
+        }
+
+        .input-area {
+            padding: 1rem 1.5rem;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 1rem;
+        }
+
+        .input-area input {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+
+        .input-area input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .input-area button {
+            padding: 0.75rem 1.5rem;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .input-area button:hover {
+            background: var(--accent-hover);
+        }
+
+        .input-area button:disabled {
+            background: var(--border);
+            cursor: not-allowed;
+        }
+
+        .info-panel {
+            width: 280px;
+            background: var(--bg-secondary);
+            border-left: 1px solid var(--border);
+            padding: 1rem;
+            overflow-y: auto;
+        }
+
+        .info-panel h2 {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+        }
+
+        .info-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .info-section h3 {
+            font-size: 0.85rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .info-section p, .info-section li {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .info-section ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .info-section li::before {
+            content: "• ";
+            color: var(--accent);
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 0.5rem;
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 1rem;
+        }
+
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            background: var(--text-secondary);
+            border-radius: 50%;
+            animation: typing 1s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>NPC Playground</h1>
+        <div class="status">
+            <span class="status-dot" id="statusDot"></span>
+            <span id="statusText">Connecting...</span>
+        </div>
+    </header>
+
+    <main>
+        <aside class="sidebar">
+            <h2>Characters</h2>
+            <ul class="character-list" id="characterList">
+                <li class="character-item" onclick="loadingCharacters()">
+                    <p>Loading characters...</p>
+                </li>
+            </ul>
+        </aside>
+
+        <section class="chat-area">
+            <div class="chat-header" id="chatHeader">
+                <h2>Select a character</h2>
+                <p>Choose an NPC from the sidebar to start chatting</p>
+            </div>
+
+            <div class="messages" id="messages">
+                <div class="empty-state">
+                    <h3>No conversation yet</h3>
+                    <p>Select a character and start chatting!</p>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <input type="text" id="messageInput" placeholder="Type your message..." disabled>
+                <button id="sendButton" disabled>Send</button>
+            </div>
+        </section>
+
+        <aside class="info-panel" id="infoPanel">
+            <h2>Session Info</h2>
+            <div class="info-section">
+                <h3>Status</h3>
+                <p>No active session</p>
+            </div>
+        </aside>
+    </main>
+
+    <script>
+        const API_BASE = window.location.origin;
+        let currentSession = null;
+        let currentCharacter = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            await checkHealth();
+            await loadCharacters();
+            setupEventListeners();
+        });
+
+        async function checkHealth() {
+            try {
+                const res = await fetch(`${API_BASE}/v1/health`);
+                const data = await res.json();
+
+                document.getElementById('statusDot').className =
+                    data.status === 'healthy' ? 'status-dot' : 'status-dot offline';
+                document.getElementById('statusText').textContent =
+                    data.status === 'healthy' ? 'Connected' : 'Degraded';
+            } catch (e) {
+                document.getElementById('statusDot').className = 'status-dot offline';
+                document.getElementById('statusText').textContent = 'Offline';
+            }
+        }
+
+        async function loadCharacters() {
+            try {
+                const res = await fetch(`${API_BASE}/v1/characters`);
+                const data = await res.json();
+
+                const list = document.getElementById('characterList');
+                list.innerHTML = data.characters.map(char => `
+                    <li class="character-item" onclick="selectCharacter('${char.name}')">
+                        <h3>${char.name}</h3>
+                        <p>${char.role}</p>
+                    </li>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load characters:', e);
+            }
+        }
+
+        async function selectCharacter(name) {
+            // Update UI
+            document.querySelectorAll('.character-item').forEach(el => {
+                el.classList.toggle('selected', el.querySelector('h3').textContent === name);
+            });
+
+            // Get character details
+            try {
+                const res = await fetch(`${API_BASE}/v1/characters/${name.toLowerCase()}`);
+                currentCharacter = await res.json();
+
+                // Create session
+                const sessionRes = await fetch(`${API_BASE}/v1/sessions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        npc_id: name.toLowerCase(),
+                        player_id: 'playground_user'
+                    })
+                });
+                const session = await sessionRes.json();
+                currentSession = session;
+
+                // Update UI
+                updateChatHeader();
+                updateInfoPanel();
+                enableInput();
+
+                // Clear messages and show first message if available
+                const messagesEl = document.getElementById('messages');
+                messagesEl.innerHTML = '';
+
+                if (session.first_message) {
+                    addMessage('npc', session.first_message, currentCharacter.name);
+                }
+            } catch (e) {
+                console.error('Failed to select character:', e);
+            }
+        }
+
+        function updateChatHeader() {
+            const header = document.getElementById('chatHeader');
+            header.innerHTML = `
+                <h2>${currentCharacter.name}</h2>
+                <p>${currentCharacter.role}</p>
+            `;
+        }
+
+        function updateInfoPanel() {
+            const panel = document.getElementById('infoPanel');
+            panel.innerHTML = `
+                <h2>Session Info</h2>
+                <div class="info-section">
+                    <h3>Session ID</h3>
+                    <p>${currentSession.id}</p>
+                </div>
+                <div class="info-section">
+                    <h3>Turn Count</h3>
+                    <p>${currentSession.turn_count}</p>
+                </div>
+                <div class="info-section">
+                    <h3>Personality</h3>
+                    <ul>
+                        ${currentCharacter.traits.map(t => `<li>${t}</li>`).join('')}
+                    </ul>
+                </div>
+                <div class="info-section">
+                    <h3>Speech Style</h3>
+                    <ul>
+                        ${currentCharacter.speech_patterns.slice(0, 3).map(s => `<li>${s}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        function enableInput() {
+            document.getElementById('messageInput').disabled = false;
+            document.getElementById('sendButton').disabled = false;
+        }
+
+        function setupEventListeners() {
+            const input = document.getElementById('messageInput');
+            const button = document.getElementById('sendButton');
+
+            button.addEventListener('click', sendMessage);
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+
+            if (!message || !currentSession) return;
+
+            // Add user message
+            addMessage('user', message, 'You');
+            input.value = '';
+
+            // Show typing indicator
+            showTyping();
+
+            try {
+                const res = await fetch(`${API_BASE}/v1/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: currentSession.id,
+                        message: message
+                    })
+                });
+
+                const data = await res.json();
+
+                // Remove typing indicator
+                hideTyping();
+
+                // Add NPC response
+                addMessage('npc', data.content, currentCharacter.name, data.actions);
+
+                // Update session info
+                currentSession.turn_count = data.turn_number;
+                updateInfoPanel();
+            } catch (e) {
+                hideTyping();
+                addMessage('npc', 'Error: Could not get response', 'System');
+            }
+        }
+
+        function addMessage(type, content, speaker, actions = []) {
+            const messagesEl = document.getElementById('messages');
+
+            // Remove empty state if present
+            const emptyState = messagesEl.querySelector('.empty-state');
+            if (emptyState) emptyState.remove();
+
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${type}`;
+
+            let actionsHtml = '';
+            if (actions && actions.length > 0) {
+                actionsHtml = `<div class="actions">Actions: ${actions.map(a => a.action).join(', ')}</div>`;
+            }
+
+            messageEl.innerHTML = `
+                <div class="speaker">${speaker}</div>
+                <div class="content">${content}</div>
+                ${actionsHtml}
+            `;
+
+            messagesEl.appendChild(messageEl);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function showTyping() {
+            const messagesEl = document.getElementById('messages');
+            const typing = document.createElement('div');
+            typing.className = 'message npc typing-indicator';
+            typing.id = 'typingIndicator';
+            typing.innerHTML = '<span></span><span></span><span></span>';
+            messagesEl.appendChild(typing);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function hideTyping() {
+            const typing = document.getElementById('typingIndicator');
+            if (typing) typing.remove();
+        }
+    </script>
+</body>
+</html>

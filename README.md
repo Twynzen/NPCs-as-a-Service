@@ -1,327 +1,309 @@
-# NPC Conversation Simulator
+# NPC Service
 
-Generate synthetic conversations for training AI-powered NPCs with persistent personality and memory.
+AI-powered NPCs with persistent memory for games. Provides a REST/WebSocket API that any game can consume to have intelligent, memorable NPC conversations.
 
-## Overview
+## Features
 
-This tool simulates conversations between NPCs and generated customer profiles, producing training data for NPC systems. It uses Ollama for local LLM inference and supports any character defined via YAML/JSON character cards.
-
-**Features:**
-- Generic character card system (YAML/JSON)
-- Customer archetype generation with emotional states, factions, objectives
-- Experience/memory extraction from conversations
-- Quality metrics and character consistency evaluation
-- Sequential execution (prototype-friendly)
+- **REST + WebSocket API** - Easy integration with any game engine
+- **Persistent Memory** - NPCs remember players across sessions
+- **Character Cards** - Define any NPC via YAML/JSON
+- **Action System** - NPCs can give items, start quests, remember facts
+- **Conversation Simulator** - Generate training data for fine-tuning
+- **Web Playground** - Test NPCs without writing code
 
 ## Quick Start
 
 ### Prerequisites
 
 1. **Python 3.11+**
-2. **UV package manager**
+2. **UV** package manager:
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
-3. **Ollama** running locally with a model
+3. **Ollama** with a model:
    ```bash
-   # Install Ollama: https://ollama.ai
-   ollama serve  # Start the server
-   ollama pull phi3.5  # Or llama3.2
+   ollama serve
+   ollama pull phi3.5
    ```
 
 ### Installation
 
 ```bash
-# Clone and enter the directory
+git clone <repo>
 cd NPCs-as-a-Service
-
-# Install dependencies
 uv sync
 ```
 
-### Run Your First Simulation
+### Start the Server
 
 ```bash
-# Check system requirements
-uv run python -m src.main check
+# Start the API server
+uv run python -m src.main serve
 
-# Generate 10 conversations with Zamir
-uv run python -m src.main simulate --character zamir --count 10
-
-# Generate with verbose output
-uv run python -m src.main simulate -c zamir -n 5 --verbose
+# Or with auto-reload for development
+uv run python -m src.main serve --reload
 ```
 
-## Usage
+Open http://localhost:8000/playground to test NPCs in your browser.
 
-### Commands
+## API Usage
+
+### 1. Create a Session
 
 ```bash
-# List available characters
-uv run python -m src.main list-npcs
-
-# Generate conversations
-uv run python -m src.main simulate [OPTIONS]
-
-# System check
-uv run python -m src.main check
+curl -X POST http://localhost:8000/v1/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"npc_id": "zamir", "player_id": "player_123"}'
 ```
 
-### Simulate Options
-
-| Option | Short | Default | Description |
-|--------|-------|---------|-------------|
-| `--character` | `-c` | `zamir` | Character name |
-| `--count` | `-n` | `10` | Number of conversations |
-| `--model` | `-m` | `phi3.5` | Ollama model to use |
-| `--max-turns` | | `20` | Max turns per conversation |
-| `--temperature` | `-t` | `0.7` | LLM sampling temperature |
-| `--output` | `-o` | auto | Output file path |
-| `--verbose` | `-v` | `false` | Show conversation details |
-
-### Examples
-
-```bash
-# Generate 100 conversations with Zamir
-uv run python -m src.main simulate --character zamir --count 100
-
-# Use a different model
-uv run python -m src.main simulate -c zamir -n 20 --model llama3.2
-
-# Custom output file
-uv run python -m src.main simulate -c zamir -n 50 -o my_conversations.json
-
-# Higher creativity
-uv run python -m src.main simulate -c zamir -n 10 -t 0.9
-```
-
-## Output Format
-
-### Conversations JSON
-
+Response:
 ```json
 {
-  "metadata": {
-    "character": "zamir",
-    "model": "phi3.5",
-    "generated_at": "2025-12-16T10:30:00",
-    "count": 10,
-    "summary": {
-      "avg_turns": 8.5,
-      "avg_consistency": 0.85,
-      "natural_endings": 8
-    }
-  },
-  "conversations": [
-    {
-      "id": "conv_00001",
-      "character": "Zamir Talaquett",
-      "customer_profile": {
-        "archetype": "courier",
-        "faction": "rebel",
-        "emotional_state": "nervous",
-        "objective": "information",
-        "trust_level": "stranger"
-      },
-      "turns": [
-        {"speaker": "customer", "message": "..."},
-        {"speaker": "npc", "message": "..."}
-      ],
-      "extracted_experiences": [
-        {
-          "description": "A nervous rebel courier sought passage information",
-          "importance": 7,
-          "topics": ["rebel", "passage", "information"]
-        }
-      ],
-      "metrics": {
-        "num_turns": 8,
-        "character_consistency": 0.85,
-        "conversation_naturalness": 0.90,
-        "conversation_ended_naturally": true
-      }
-    }
-  ]
+  "id": "sess_abc123",
+  "npc_id": "zamir",
+  "player_id": "player_123",
+  "first_message": "*Zamir looks up from polishing a glass*..."
 }
 ```
 
-### Experiences JSON
+### 2. Send Messages
 
+```bash
+curl -X POST http://localhost:8000/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"session_id": "sess_abc123", "message": "I need information about QDT"}'
+```
+
+Response:
 ```json
 {
-  "metadata": {
-    "character": "zamir",
-    "total_experiences": 25
-  },
-  "experiences": [
-    {
-      "description": "A desperate dock worker sought work to pay debts",
-      "importance": 6,
-      "topics": ["work", "debt", "dock_supervisor"],
-      "emotional_context": "desperate",
-      "customer_type": "dock_supervisor",
-      "conversation_id": "conv_00003"
-    }
-  ]
+  "content": "*Zamir's polishing slows* QDT, you say...",
+  "actions": [
+    {"action": "remember", "parameters": {"fact": "Player seeks QDT info", "importance": 6}}
+  ],
+  "turn_number": 1
 }
 ```
 
-## Adding New NPCs
+### 3. WebSocket Streaming
 
-### 1. Create a Character Card
+```javascript
+const ws = new WebSocket('ws://localhost:8000/v1/chat/ws/sess_abc123');
+
+ws.send(JSON.stringify({ message: "Hello!" }));
+
+ws.onmessage = (e) => {
+  const data = JSON.parse(e.data);
+  if (data.type === 'chunk') {
+    console.log(data.content);  // Streaming token
+  } else if (data.type === 'done') {
+    console.log('Actions:', data.actions);
+  }
+};
+```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v1/health` | GET | Service health check |
+| `/v1/characters` | GET | List available NPCs |
+| `/v1/characters/{id}` | GET | Get NPC details |
+| `/v1/sessions` | POST | Create conversation session |
+| `/v1/sessions/{id}` | GET | Get session info |
+| `/v1/sessions/{id}` | DELETE | End session |
+| `/v1/chat` | POST | Send message, get response |
+| `/v1/chat/quick` | POST | One-shot chat (auto session) |
+| `/v1/chat/ws/{id}` | WS | WebSocket streaming |
+| `/v1/memory/inject` | POST | Inject memory into NPC |
+
+Full API docs: http://localhost:8000/docs
+
+## Memory System
+
+NPCs have three memory layers:
+
+### Core Memory (Always Active)
+- Player name and known facts
+- Relationship level (-10 hostile to +10 trusted)
+- NPC's current emotional state
+
+### Recall Memory (Session)
+- Last 20 conversation turns
+- Provides immediate context
+
+### Archival Memory (Persistent)
+- Long-term memories with importance scores
+- Semantic search for relevant memories
+- Survives across sessions
+
+### Memory Actions
+
+NPCs can execute memory actions:
+
+```json
+{"action": "remember", "parameters": {"fact": "Player helped defend the bar", "importance": 8}}
+{"action": "update_relationship", "parameters": {"delta": 2}}
+{"action": "set_emotion", "parameters": {"emotion": "grateful"}}
+{"action": "give_item", "parameters": {"item_id": "special_drink", "quantity": 1}}
+```
+
+## Adding NPCs
 
 Create a YAML file in `src/characters/templates/`:
 
 ```yaml
-# src/characters/templates/my_npc.yaml
-name: "Character Name"
-role: "Brief description of role"
+name: "Elena the Merchant"
+role: "Traveling merchant specializing in rare artifacts"
 
 personality:
   traits:
-    - "Key personality trait 1"
-    - "Key personality trait 2"
+    - "Shrewd businesswoman"
+    - "Knows the value of everything"
   speech_patterns:
-    - "How they speak"
-    - "Verbal mannerisms"
-  big_five:  # Optional
-    openness: 0.5
-    conscientiousness: 0.5
-    extraversion: 0.5
-    agreeableness: 0.5
-    neuroticism: 0.5
+    - "Speaks in terms of trades and deals"
 
 backstory: |
-  Character background and history.
-  Multiple lines supported.
+  Elena has traveled the trade routes for twenty years.
 
 knowledge_domains:
-  expert:
-    - "Area of expertise 1"
-  familiar:
-    - "Things they know about"
-  ignorant:
-    - "Things they don't know"
+  expert: ["Artifact valuation", "Trade routes"]
+  ignorant: ["Magic", "Military tactics"]
 
 behavioral_boundaries:
-  never:
-    - "Things the character would NEVER do"
-  always:
-    - "Things the character ALWAYS does"
+  never: ["Give items for free"]
+  always: ["Quote a price for everything"]
 
 first_message: |
-  The character's opening message when starting a conversation.
-
-example_dialogues:
-  - context: "Situation description"
-    customer: "What the customer says"
-    npc: "How the NPC responds"
+  *Elena looks up* "Ah, a customer! What treasures seek you today?"
 ```
 
-### 2. Run Simulations
+## Conversation Simulator
+
+Generate training data:
 
 ```bash
-uv run python -m src.main simulate --character my_npc --count 100
+# Generate 100 conversations
+uv run python -m src.main simulate -c zamir -n 100
+
+# With verbose output
+uv run python -m src.main simulate -c zamir -n 50 --verbose
 ```
 
-### Character Card Schema
+## Architecture
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | ✓ | Character's name |
-| `role` | string | ✓ | Brief role description |
-| `personality.traits` | list[str] | ✓ | Core personality traits |
-| `personality.speech_patterns` | list[str] | | How they speak |
-| `personality.big_five` | object | | OCEAN personality scores |
-| `backstory` | string | | Character background |
-| `knowledge_domains` | object | | Expert/familiar/ignorant areas |
-| `behavioral_boundaries` | object | | Never/always rules |
-| `first_message` | string | | Opening conversation message |
-| `example_dialogues` | list | | Few-shot examples |
-
-## Customizing Customer Archetypes
-
-Edit `src/customers/archetypes.yaml` to modify:
-
-- **Factions**: Groups customers belong to
-- **Emotional states**: How customers feel
-- **Objectives**: What customers want
-- **Trust levels**: Relationship with NPC
-- **Archetypes**: Specific customer types
+```
+┌─────────────────────────────────────────────────────────────┐
+│                       GAME CLIENT                            │
+│            (Unity, Unreal, Godot, Web, etc.)                │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ REST / WebSocket
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      NPC SERVICE                             │
+│  ┌──────────┐  ┌──────────┐  ┌────────────────────────────┐ │
+│  │ FastAPI  │──│  Engine  │──│         Memory             │ │
+│  │  Server  │  │  (NPC)   │  │  Core │ Recall │ Archival  │ │
+│  └──────────┘  └────┬─────┘  └────────────────────────────┘ │
+│                     │                                        │
+│  ┌──────────────────┴────────────────────────────────────┐  │
+│  │                   LLM Layer                            │  │
+│  │           Ollama (local)  │  OpenAI (cloud)            │  │
+│  └────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Project Structure
 
 ```
-npc-simulator/
+npc-service/
 ├── src/
-│   ├── characters/
-│   │   ├── loader.py          # Character card loading
+│   ├── server/           # FastAPI application
+│   │   ├── app.py
+│   │   └── routes/
+│   ├── engine/           # NPC runtime
+│   │   ├── npc_engine.py
+│   │   ├── context_builder.py
+│   │   └── action_parser.py
+│   ├── memory/           # Memory system
+│   │   ├── manager.py
+│   │   ├── core_memory.py
+│   │   ├── recall_memory.py
+│   │   └── archival_memory.py
+│   ├── characters/       # Character loading
 │   │   └── templates/
-│   │       └── zamir.yaml     # Zamir character card
-│   │
-│   ├── customers/
-│   │   ├── generator.py       # Customer profile generation
-│   │   └── archetypes.yaml    # Customer archetypes
-│   │
-│   ├── simulation/
-│   │   ├── conversation.py    # Dialogue loop
-│   │   ├── experience_extractor.py  # Memory extraction
-│   │   └── evaluator.py       # Quality metrics
-│   │
-│   ├── llm/
-│   │   └── ollama_client.py   # Ollama API client
-│   │
-│   └── main.py                # CLI entry point
-│
+│   ├── simulation/       # Training data generation
+│   ├── llm/              # LLM clients
+│   ├── config.py
+│   └── main.py
+├── playground/           # Web UI
 ├── output/
-│   ├── conversations/         # Generated conversations
-│   └── experiences/           # Extracted experiences
-│
-├── pyproject.toml             # UV/Python config
+├── pyproject.toml
 └── README.md
 ```
 
-## Troubleshooting
+## CLI Commands
 
-### Ollama not available
 ```bash
-# Start the Ollama server
-ollama serve
+# Start API server
+uv run python -m src.main serve [--port 8000] [--reload]
 
-# In another terminal, verify it's running
-curl http://localhost:11434/api/tags
-```
+# Generate training conversations
+uv run python -m src.main simulate -c CHARACTER -n COUNT
 
-### Model not found
-```bash
-# Pull the recommended model
-ollama pull phi3.5
-
-# Or use an alternative
-ollama pull llama3.2
-```
-
-### Character not found
-```bash
-# List available characters
+# List available NPCs
 uv run python -m src.main list-npcs
 
-# Check the templates directory
-ls src/characters/templates/
+# Check system status
+uv run python -m src.main check
 ```
 
-## Recommended Models
+## Configuration
 
-| Model | Size | Quality | Speed | Notes |
-|-------|------|---------|-------|-------|
-| `phi3.5` | 3.8B | Good | Fast | Recommended |
-| `llama3.2` | 3.2B | Good | Fast | Alternative |
-| `mistral` | 7B | Better | Slower | Higher quality |
+Environment variables (or `.env` file):
+
+```bash
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=phi3.5
+OPENAI_API_KEY=sk-...      # Optional
+HOST=0.0.0.0
+PORT=8000
+```
+
+## Integration Example (JavaScript)
+
+```javascript
+class NPCClient {
+  constructor(baseUrl = 'http://localhost:8000') {
+    this.baseUrl = baseUrl;
+  }
+
+  async startSession(npcId, playerId) {
+    const res = await fetch(`${this.baseUrl}/v1/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ npc_id: npcId, player_id: playerId })
+    });
+    return res.json();
+  }
+
+  async chat(sessionId, message) {
+    const res = await fetch(`${this.baseUrl}/v1/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, message })
+    });
+    return res.json();
+  }
+}
+
+// Usage
+const npc = new NPCClient();
+const session = await npc.startSession('zamir', 'player_1');
+const response = await npc.chat(session.id, 'Hello!');
+console.log(response.content);
+```
 
 ## License
 
-MIT License - See LICENSE file for details.
-
----
-
-Built for the NPCs-as-a-Service project. See the whitepaper for theoretical foundations.
+MIT License

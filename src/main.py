@@ -1,4 +1,4 @@
-"""NPC Conversation Simulator CLI."""
+"""NPC Service CLI - Server and Simulator."""
 
 import json
 import sys
@@ -17,13 +17,53 @@ from src.simulation.conversation import ConversationSimulator
 from src.simulation.experience_extractor import ExperienceExtractor
 from src.simulation.evaluator import ConversationEvaluator
 from src.llm.ollama_client import OllamaClient
+from src.config import settings
 
 app = typer.Typer(
-    name="npc-simulator",
-    help="Generate synthetic conversations for NPC training",
+    name="npc-service",
+    help="NPC Service - AI-powered NPCs with persistent memory",
     add_completion=False,
 )
 console = Console()
+
+
+# === Server Commands ===
+
+@app.command()
+def serve(
+    host: str = typer.Option(
+        "0.0.0.0",
+        "--host", "-h",
+        help="Host to bind to",
+    ),
+    port: int = typer.Option(
+        8000,
+        "--port", "-p",
+        help="Port to bind to",
+    ),
+    reload: bool = typer.Option(
+        False,
+        "--reload", "-r",
+        help="Enable auto-reload for development",
+    ),
+):
+    """Start the NPC Service API server."""
+    import uvicorn
+
+    console.print(Panel.fit(
+        "[bold blue]NPC Service[/bold blue]\n"
+        f"Starting server on [green]http://{host}:{port}[/green]\n"
+        f"Playground: [cyan]http://{host}:{port}/playground[/cyan]\n"
+        f"API Docs: [cyan]http://{host}:{port}/docs[/cyan]",
+        border_style="blue",
+    ))
+
+    uvicorn.run(
+        "src.server.app:app",
+        host=host,
+        port=port,
+        reload=reload,
+    )
 
 
 def get_output_dir() -> Path:
