@@ -1,7 +1,7 @@
 [project]
 name = "npc-service"
-version = "0.2.0"
-description = "NPC Service - AI-powered NPCs with persistent memory for games"
+version = "0.3.0"
+description = "NPC Service - AI-powered NPCs with persistent memory and RAG for games"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -19,6 +19,24 @@ dependencies = [
     # CLI
     "rich>=13.0.0",
     "typer>=0.9.0",
+
+    # RAG - Vector Database
+    "qdrant-client>=1.7.0",
+
+    # RAG - Optional Redis for production caching
+    # "redis>=5.0.0",
+]
+
+[project.optional-dependencies]
+rag = [
+    "qdrant-client>=1.7.0",
+]
+redis = [
+    "redis>=5.0.0",
+]
+all = [
+    "qdrant-client>=1.7.0",
+    "redis>=5.0.0",
 ]
 
 [project.scripts]

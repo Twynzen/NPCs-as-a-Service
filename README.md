@@ -1,11 +1,12 @@
 # NPC Service
 
-AI-powered NPCs with persistent memory for games. Provides a REST/WebSocket API that any game can consume to have intelligent, memorable NPC conversations.
+AI-powered NPCs with persistent memory and RAG (Retrieval-Augmented Generation) for games. Provides a REST/WebSocket API that any game can consume to have intelligent, memorable NPC conversations.
 
 ## Features
 
 - **REST + WebSocket API** - Easy integration with any game engine
-- **Persistent Memory** - NPCs remember players across sessions
+- **Persistent Memory with RAG** - NPCs remember players using semantic search
+- **Hybrid Search** - Combines vector similarity (semantic) + BM25 (keyword) for optimal recall
 - **Character Cards** - Define any NPC via YAML/JSON
 - **Action System** - NPCs can give items, start quests, remember facts
 - **Conversation Simulator** - Generate training data for fine-tuning
@@ -121,7 +122,24 @@ Full API docs: http://localhost:8000/docs
 
 ## Memory System
 
-NPCs have three memory layers:
+NPCs have three memory layers (following MemGPT architecture):
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ CORE MEMORY (always in context)                             │
+│ - Player name, known facts, relationship level              │
+│ - NPC's current emotional state                             │
+├─────────────────────────────────────────────────────────────┤
+│ RECALL MEMORY (recent conversation)                         │
+│ - Last 20 conversation turns                                │
+│ - Provides immediate context                                │
+├─────────────────────────────────────────────────────────────┤
+│ ARCHIVAL MEMORY (RAG-powered long-term)                     │
+│ - Semantic search via Ollama embeddings + Qdrant            │
+│ - Hybrid search: Vector + BM25 with RRF fusion              │
+│ - Scoring: Recency × Importance × Relevance                 │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ### Core Memory (Always Active)
 - Player name and known facts
@@ -132,9 +150,12 @@ NPCs have three memory layers:
 - Last 20 conversation turns
 - Provides immediate context
 
-### Archival Memory (Persistent)
+### Archival Memory (Persistent with RAG)
 - Long-term memories with importance scores
-- Semantic search for relevant memories
+- **Semantic search**: Finds related concepts even with different words
+- **Hybrid search**: Combines vector similarity + BM25 keyword matching
+- **RRF fusion**: Combines rankings for optimal recall
+- Scoring formula: `score = 0.3×recency + 0.3×importance + 0.4×relevance`
 - Survives across sessions
 
 ### Memory Actions
@@ -204,13 +225,19 @@ uv run python -m src.main simulate -c zamir -n 50 --verbose
 │  ┌──────────┐  ┌──────────┐  ┌────────────────────────────┐ │
 │  │ FastAPI  │──│  Engine  │──│         Memory             │ │
 │  │  Server  │  │  (NPC)   │  │  Core │ Recall │ Archival  │ │
-│  └──────────┘  └────┬─────┘  └────────────────────────────┘ │
-│                     │                                        │
-│  ┌──────────────────┴────────────────────────────────────┐  │
-│  │                   LLM Layer                            │  │
-│  │           Ollama (local)  │  OpenAI (cloud)            │  │
-│  └────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
+│  └──────────┘  └────┬─────┘  └──────────┬─────────────────┘ │
+│                     │                    │                   │
+│  ┌──────────────────┴────────┐  ┌───────┴─────────────────┐ │
+│  │        LLM Layer          │  │     RAG Pipeline        │ │
+│  │  Ollama │ OpenAI (cloud)  │  │ Embeddings│Vector+BM25  │ │
+│  └───────────────────────────┘  └───────────┬─────────────┘ │
+└──────────────────────────────────────────────┼──────────────┘
+                                               │
+                                               ▼
+                                    ┌──────────────────────┐
+                                    │   Qdrant (Vector DB) │
+                                    │   Redis (Cache)      │
+                                    └──────────────────────┘
 ```
 
 ## Project Structure
@@ -230,6 +257,10 @@ npc-service/
 │   │   ├── core_memory.py
 │   │   ├── recall_memory.py
 │   │   └── archival_memory.py
+│   ├── rag/              # RAG pipeline (NEW)
+│   │   ├── embeddings.py   # Ollama embeddings client
+│   │   ├── vector_store.py # Qdrant/InMemory abstraction
+│   │   └── retriever.py    # Hybrid search (BM25 + Vector)
 │   ├── characters/       # Character loading
 │   │   └── templates/
 │   ├── simulation/       # Training data generation
@@ -263,12 +294,53 @@ uv run python -m src.main check
 Environment variables (or `.env` file):
 
 ```bash
+# LLM
 OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=phi3.5
 OPENAI_API_KEY=sk-...      # Optional
+
+# RAG - Embeddings
+EMBEDDING_MODEL=nomic-embed-text    # 768 dimensions, 8192 context
+EMBEDDING_DIMENSIONS=768
+
+# RAG - Vector Database (Qdrant)
+QDRANT_URL=http://localhost:6333    # Set to enable RAG
+QDRANT_COLLECTION=npc_memories
+
+# RAG - Hybrid Search
+USE_HYBRID_SEARCH=true              # Enable BM25 + Vector
+RRF_K=60                            # RRF constant
+
+# RAG - Memory Scoring
+IMPORTANCE_WEIGHT=0.3
+RECENCY_WEIGHT=0.3
+RELEVANCE_WEIGHT=0.4
+RECENCY_DECAY_FACTOR=0.995          # Per hour, ~6 day half-life
+
+# Server
 HOST=0.0.0.0
 PORT=8000
 ```
+
+### Running with RAG
+
+To enable RAG with Qdrant:
+
+```bash
+# 1. Start Qdrant (using Docker)
+docker run -p 6333:6333 qdrant/qdrant
+
+# 2. Pull embedding model
+ollama pull nomic-embed-text
+
+# 3. Set QDRANT_URL
+export QDRANT_URL=http://localhost:6333
+
+# 4. Start NPC Service
+uv run python -m src.main serve
+```
+
+Without Qdrant, the system falls back to keyword-based search.
 
 ## Integration Example (JavaScript)
 

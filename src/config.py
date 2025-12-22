@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     # Service
     service_name: str = "NPC Service"
-    service_version: str = "0.2.0"
+    service_version: str = "0.3.0"  # Updated for RAG support
     debug: bool = Field(default=False, alias="DEBUG")
 
     # Server
@@ -26,17 +26,77 @@ class Settings(BaseSettings):
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
 
+    # RAG - Embeddings
+    embedding_model: str = Field(
+        default="nomic-embed-text",
+        alias="EMBEDDING_MODEL",
+        description="Ollama embedding model (nomic-embed-text: 768d, mxbai-embed-large: 1024d)"
+    )
+    embedding_dimensions: int = Field(
+        default=768,
+        alias="EMBEDDING_DIMENSIONS",
+        description="Embedding vector dimensions (must match model)"
+    )
+    embedding_batch_size: int = Field(
+        default=32,
+        alias="EMBEDDING_BATCH_SIZE",
+        description="Batch size for embedding generation"
+    )
+
+    # RAG - Hybrid Search
+    use_hybrid_search: bool = Field(
+        default=True,
+        alias="USE_HYBRID_SEARCH",
+        description="Enable BM25 + Vector hybrid search"
+    )
+    rrf_k: int = Field(
+        default=60,
+        alias="RRF_K",
+        description="RRF constant (higher = less emphasis on top ranks)"
+    )
+    retrieval_top_k: int = Field(
+        default=5,
+        alias="RETRIEVAL_TOP_K",
+        description="Number of memories to retrieve per query"
+    )
+
     # Memory - Redis (optional, falls back to in-memory)
     redis_url: Optional[str] = Field(default=None, alias="REDIS_URL")
 
-    # Memory - Vector DB (optional, falls back to local)
+    # Memory - Vector DB (Qdrant)
     qdrant_url: Optional[str] = Field(default=None, alias="QDRANT_URL")
     qdrant_collection: str = Field(default="npc_memories", alias="QDRANT_COLLECTION")
+    qdrant_api_key: Optional[str] = Field(default=None, alias="QDRANT_API_KEY")
+
+    # Memory - Recency Decay
+    recency_decay_factor: float = Field(
+        default=0.995,
+        alias="RECENCY_DECAY_FACTOR",
+        description="Decay factor per hour (0.995^hours). Half-life ~138 hours"
+    )
+
+    # Memory - Importance Scoring
+    importance_weight: float = Field(
+        default=0.3,
+        alias="IMPORTANCE_WEIGHT",
+        description="Weight for importance in retrieval scoring"
+    )
+    recency_weight: float = Field(
+        default=0.3,
+        alias="RECENCY_WEIGHT",
+        description="Weight for recency in retrieval scoring"
+    )
+    relevance_weight: float = Field(
+        default=0.4,
+        alias="RELEVANCE_WEIGHT",
+        description="Weight for relevance (semantic similarity)"
+    )
 
     # Limits
     max_context_tokens: int = 4096
     max_response_tokens: int = 500
     max_memory_items: int = 100
+    max_archival_memories: int = 10000
     session_timeout_minutes: int = 60
 
     # Paths
@@ -78,6 +138,36 @@ class Settings(BaseSettings):
                 "available": self.qdrant_url is not None,
                 "url": self.qdrant_url,
                 "collection": self.qdrant_collection,
+                "api_key": self.qdrant_api_key,
+            },
+        }
+
+    def get_rag_config(self) -> dict:
+        """Get RAG configuration for embeddings and retrieval."""
+        return {
+            "embeddings": {
+                "model": self.embedding_model,
+                "dimensions": self.embedding_dimensions,
+                "batch_size": self.embedding_batch_size,
+                "provider": "ollama",
+                "url": self.ollama_url,
+            },
+            "retrieval": {
+                "use_hybrid": self.use_hybrid_search,
+                "rrf_k": self.rrf_k,
+                "top_k": self.retrieval_top_k,
+            },
+            "scoring": {
+                "importance_weight": self.importance_weight,
+                "recency_weight": self.recency_weight,
+                "relevance_weight": self.relevance_weight,
+                "recency_decay": self.recency_decay_factor,
+            },
+            "vector_store": {
+                "available": self.qdrant_url is not None,
+                "url": self.qdrant_url,
+                "collection": self.qdrant_collection,
+                "api_key": self.qdrant_api_key,
             },
         }
 

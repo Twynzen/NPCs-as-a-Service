@@ -1,9 +1,29 @@
-"""Memory Manager - Orchestrates all memory systems.
+"""Memory Manager - Orchestrates all memory systems with RAG support.
 
 Provides a unified interface for the NPC engine to interact with
-all memory layers: core, recall, and archival.
+all memory layers: core, recall, and archival (with RAG).
+
+Architecture (3-layer memory following MemGPT pattern):
+┌─────────────────────────────────────────────────────────────┐
+│ CAPA 1: CORE MEMORY (siempre en contexto)                   │
+│ Ubicación: En el prompt del LLM                             │
+│ Contenido: Personalidad NPC, relación con jugador, objetivos│
+│ Actualización: Al detectar cambios significativos           │
+├─────────────────────────────────────────────────────────────┤
+│ CAPA 2: RECALL MEMORY (Redis en producción)                 │
+│ Ubicación: Base de datos externa                            │
+│ Contenido: Historial de conversación reciente               │
+│ Acceso: Scroll por tiempo, últimos N mensajes               │
+├─────────────────────────────────────────────────────────────┤
+│ CAPA 3: ARCHIVAL MEMORY (Qdrant + RAG)                      │
+│ Ubicación: Vector database                                  │
+│ Contenido: Todas las memorias indexadas semánticamente      │
+│ Acceso: Búsqueda híbrida (vector + BM25)                    │
+└─────────────────────────────────────────────────────────────┘
 """
 
+import asyncio
+import logging
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
@@ -11,6 +31,8 @@ from pydantic import BaseModel
 from .core_memory import CoreMemory
 from .recall_memory import RecallMemory, ConversationTurn
 from .archival_memory import ArchivalMemory, Memory
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryContext(BaseModel):
@@ -36,24 +58,113 @@ class MemoryContext(BaseModel):
 
 class MemoryManager:
     """
-    Unified memory management for NPCs.
+    Unified memory management for NPCs with RAG support.
 
     Handles:
     - Core memory (always in context)
     - Recall memory (recent conversation)
-    - Archival memory (long-term semantic)
+    - Archival memory (long-term semantic with RAG)
 
     Provides memory editing capabilities following MemGPT pattern.
     """
 
-    def __init__(self, vector_store=None, kv_store=None):
-        self.vector_store = vector_store  # For archival (Qdrant, etc.)
-        self.kv_store = kv_store  # For core/recall (Redis, etc.)
+    def __init__(
+        self,
+        vector_store=None,
+        embedding_client=None,
+        kv_store=None,
+        use_rag: bool = True,
+    ):
+        """Initialize memory manager.
+
+        Args:
+            vector_store: VectorStore for archival memory (Qdrant, InMemory)
+            embedding_client: EmbeddingClient for generating embeddings
+            kv_store: Key-value store for core/recall (Redis, or None for in-memory)
+            use_rag: Whether to use RAG for archival memory
+        """
+        self.vector_store = vector_store
+        self.embedding_client = embedding_client
+        self.kv_store = kv_store
+        self.use_rag = use_rag
 
         # In-memory fallbacks
         self._core_memories: dict[str, CoreMemory] = {}
         self._recall_memories: dict[str, RecallMemory] = {}
         self._archival_memories: dict[str, ArchivalMemory] = {}
+
+        # Shared retriever for all archival memories (if RAG enabled)
+        self._retriever = None
+        self._rag_initialized = False
+
+        # Configuration (can be overridden from Settings)
+        self._decay_factor = 0.995
+        self._importance_weight = 0.3
+        self._recency_weight = 0.3
+        self._relevance_weight = 0.4
+
+    async def initialize_rag(self, collection_name: str = "npc_memories") -> bool:
+        """Initialize RAG components.
+
+        Call this during app startup if RAG is enabled.
+
+        Args:
+            collection_name: Qdrant collection name
+
+        Returns:
+            True if RAG initialized successfully
+        """
+        if self._rag_initialized:
+            return True
+
+        if not self.use_rag or not self.vector_store or not self.embedding_client:
+            logger.info("RAG disabled or components not configured")
+            return False
+
+        try:
+            from src.rag.retriever import HybridRetriever
+
+            # Create collection in vector store
+            await self.vector_store.create_collection(
+                name=collection_name,
+                dimensions=self.embedding_client.dimensions,
+            )
+
+            # Create shared retriever
+            self._retriever = HybridRetriever(
+                embedding_client=self.embedding_client,
+                vector_store=self.vector_store,
+                collection_name=collection_name,
+            )
+
+            self._rag_initialized = True
+            logger.info(f"RAG initialized with collection '{collection_name}'")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to initialize RAG: {e}")
+            self.use_rag = False
+            return False
+
+    def configure_scoring(
+        self,
+        decay_factor: float = 0.995,
+        importance_weight: float = 0.3,
+        recency_weight: float = 0.3,
+        relevance_weight: float = 0.4,
+    ) -> None:
+        """Configure memory scoring weights.
+
+        Args:
+            decay_factor: Recency decay per hour
+            importance_weight: Weight for importance (0-1)
+            recency_weight: Weight for recency (0-1)
+            relevance_weight: Weight for relevance (0-1)
+        """
+        self._decay_factor = decay_factor
+        self._importance_weight = importance_weight
+        self._recency_weight = recency_weight
+        self._relevance_weight = relevance_weight
 
     def _get_key(self, npc_id: str, player_id: str) -> str:
         """Generate storage key."""
@@ -155,12 +266,18 @@ class MemoryManager:
             self._archival_memories[key] = ArchivalMemory(
                 npc_id=npc_id,
                 player_id=player_id,
-                vector_store=self.vector_store,
+                retriever=self._retriever if self.use_rag else None,
+                embedding_client=self.embedding_client if self.use_rag else None,
+                use_rag=self.use_rag,
+                decay_factor=self._decay_factor,
+                importance_weight=self._importance_weight,
+                recency_weight=self._recency_weight,
+                relevance_weight=self._relevance_weight,
             )
 
         return self._archival_memories[key]
 
-    def add_memory(
+    async def add_memory(
         self,
         npc_id: str,
         player_id: str,
@@ -170,7 +287,7 @@ class MemoryManager:
         topics: Optional[list[str]] = None,
         emotional_context: Optional[str] = None,
     ) -> Memory:
-        """Add a memory to archival storage."""
+        """Add a memory to archival storage with automatic embedding."""
         memory = Memory.create(
             npc_id=npc_id,
             player_id=player_id,
@@ -182,24 +299,61 @@ class MemoryManager:
         )
 
         archival = self.get_archival(npc_id, player_id)
-        archival.add(memory)
+        await archival.add(memory)
 
         return memory
 
-    def search_memories(
+    def add_memory_sync(
+        self,
+        npc_id: str,
+        player_id: str,
+        content: str,
+        importance: float = 5.0,
+        memory_type: str = "observation",
+        topics: Optional[list[str]] = None,
+        emotional_context: Optional[str] = None,
+    ) -> Memory:
+        """Synchronous wrapper for add_memory (backwards compatibility)."""
+        memory = Memory.create(
+            npc_id=npc_id,
+            player_id=player_id,
+            content=content,
+            importance=importance,
+            memory_type=memory_type,
+            topics=topics,
+            emotional_context=emotional_context,
+        )
+
+        archival = self.get_archival(npc_id, player_id)
+        archival.add_sync(memory)
+
+        return memory
+
+    async def search_memories(
         self,
         npc_id: str,
         player_id: str,
         query: str,
         top_k: int = 5,
     ) -> list[Memory]:
-        """Search archival memories."""
+        """Search archival memories using RAG."""
         archival = self.get_archival(npc_id, player_id)
-        return archival.search(query, top_k)
+        return await archival.search(query, top_k)
+
+    def search_memories_sync(
+        self,
+        npc_id: str,
+        player_id: str,
+        query: str,
+        top_k: int = 5,
+    ) -> list[Memory]:
+        """Synchronous wrapper for search_memories."""
+        archival = self.get_archival(npc_id, player_id)
+        return archival.search_sync(query, top_k)
 
     # === Context Building ===
 
-    def get_memory_context(
+    async def get_memory_context(
         self,
         npc_id: str,
         player_id: str,
@@ -208,7 +362,7 @@ class MemoryManager:
         max_archival: int = 5,
     ) -> MemoryContext:
         """
-        Build complete memory context for a prompt.
+        Build complete memory context for a prompt using RAG.
 
         Combines core, recall, and relevant archival memories.
         """
@@ -218,7 +372,37 @@ class MemoryManager:
 
         core_text = core.to_prompt_text()
         recall_text = recall.to_prompt_text()
-        archival_text = archival.to_prompt_text(query, max_archival)
+        archival_text = await archival.to_prompt_text(query, max_archival)
+
+        total_tokens = (
+            core.get_token_estimate() +
+            recall.get_token_estimate() +
+            (len(archival_text) // 4)
+        )
+
+        return MemoryContext(
+            core=core_text,
+            recall=recall_text,
+            archival=archival_text,
+            total_tokens_estimate=total_tokens,
+        )
+
+    def get_memory_context_sync(
+        self,
+        npc_id: str,
+        player_id: str,
+        session_id: str,
+        query: str,
+        max_archival: int = 5,
+    ) -> MemoryContext:
+        """Synchronous wrapper for get_memory_context."""
+        core = self.get_core(npc_id, player_id)
+        recall = self.get_recall(npc_id, player_id, session_id)
+        archival = self.get_archival(npc_id, player_id)
+
+        core_text = core.to_prompt_text()
+        recall_text = recall.to_prompt_text()
+        archival_text = archival.to_prompt_text_sync(query, max_archival)
 
         total_tokens = (
             core.get_token_estimate() +
@@ -235,7 +419,7 @@ class MemoryManager:
 
     # === Session Management ===
 
-    def end_session(
+    async def end_session(
         self,
         npc_id: str,
         player_id: str,
@@ -250,7 +434,29 @@ class MemoryManager:
         summary = recall.get_summary_for_archival()
 
         if summary:
-            self.add_memory(
+            await self.add_memory(
+                npc_id=npc_id,
+                player_id=player_id,
+                content=summary,
+                importance=4.0,
+                memory_type="observation",
+                topics=["conversation", "session"],
+            )
+
+        return summary
+
+    def end_session_sync(
+        self,
+        npc_id: str,
+        player_id: str,
+        session_id: str,
+    ) -> Optional[str]:
+        """Synchronous wrapper for end_session."""
+        recall = self.get_recall(npc_id, player_id, session_id)
+        summary = recall.get_summary_for_archival()
+
+        if summary:
+            self.add_memory_sync(
                 npc_id=npc_id,
                 player_id=player_id,
                 content=summary,
@@ -274,4 +480,91 @@ class MemoryManager:
             "interaction_count": core.player_info.interaction_count,
             "archival_memories": archival.count(),
             "known_facts": len(core.player_info.known_facts),
+            "rag_enabled": self.use_rag and archival.use_rag,
+            "rag_initialized": self._rag_initialized,
         }
+
+    async def close(self) -> None:
+        """Close all connections."""
+        if self.vector_store:
+            await self.vector_store.close()
+        if self.embedding_client:
+            await self.embedding_client.close()
+
+
+# Factory function for creating configured MemoryManager
+async def create_memory_manager(
+    settings=None,
+) -> MemoryManager:
+    """Create a fully configured MemoryManager from settings.
+
+    Args:
+        settings: Settings object (uses global settings if None)
+
+    Returns:
+        Configured MemoryManager instance
+    """
+    if settings is None:
+        from src.config import settings
+
+    rag_config = settings.get_rag_config()
+
+    # Initialize embedding client if RAG is enabled
+    embedding_client = None
+    vector_store = None
+
+    if rag_config["vector_store"]["available"]:
+        try:
+            from src.rag.embeddings import OllamaEmbeddings
+            from src.rag.vector_store import QdrantVectorStore
+
+            embedding_client = OllamaEmbeddings(
+                base_url=rag_config["embeddings"]["url"],
+                model=rag_config["embeddings"]["model"],
+                batch_size=rag_config["embeddings"]["batch_size"],
+            )
+
+            # Check if embeddings are available
+            if await embedding_client.is_available():
+                vector_store = QdrantVectorStore(
+                    url=rag_config["vector_store"]["url"],
+                    api_key=rag_config["vector_store"]["api_key"],
+                )
+
+                # Check if Qdrant is available
+                if not await vector_store.is_available():
+                    logger.warning("Qdrant not available, falling back to in-memory")
+                    from src.rag.vector_store import InMemoryVectorStore
+                    vector_store = InMemoryVectorStore()
+            else:
+                logger.warning("Ollama embeddings not available, RAG disabled")
+                embedding_client = None
+                vector_store = None
+
+        except Exception as e:
+            logger.error(f"Failed to initialize RAG components: {e}")
+            embedding_client = None
+            vector_store = None
+
+    # Create manager
+    manager = MemoryManager(
+        vector_store=vector_store,
+        embedding_client=embedding_client,
+        use_rag=embedding_client is not None and vector_store is not None,
+    )
+
+    # Configure scoring
+    manager.configure_scoring(
+        decay_factor=rag_config["scoring"]["recency_decay"],
+        importance_weight=rag_config["scoring"]["importance_weight"],
+        recency_weight=rag_config["scoring"]["recency_weight"],
+        relevance_weight=rag_config["scoring"]["relevance_weight"],
+    )
+
+    # Initialize RAG if available
+    if manager.use_rag:
+        await manager.initialize_rag(
+            collection_name=rag_config["vector_store"]["collection"]
+        )
+
+    return manager
